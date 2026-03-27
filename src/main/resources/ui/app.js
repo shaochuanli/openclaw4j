@@ -25,6 +25,7 @@ const App = (() => {
 
   const WS_URL = `ws://${location.host}/ws`;
   const STORAGE_TOKEN_KEY = 'openclaw4j_token';
+  const STORAGE_TOKEN_REMEMBER_KEY = 'openclaw4j_token_remembered';
 
   // ─── WebSocket ─────────────────────────────────────────────────────────────
   function connect() {
@@ -151,7 +152,11 @@ const App = (() => {
   // ─── Auth ──────────────────────────────────────────────────────────────────
   function onChallenge(payload) {
     authMode = payload?.mode || 'token';
-    const savedToken = sessionStorage.getItem(STORAGE_TOKEN_KEY);
+
+    // 优先检查 localStorage（记住的 token），其次检查 sessionStorage
+    const rememberedToken = localStorage.getItem(STORAGE_TOKEN_REMEMBER_KEY);
+    const sessionToken = sessionStorage.getItem(STORAGE_TOKEN_KEY);
+    const savedToken = rememberedToken || sessionToken;
 
     if (authMode === 'none') {
       document.getElementById('auth-none-form').style.display = 'block';
@@ -161,6 +166,10 @@ const App = (() => {
       showAuthOverlay();
       if (savedToken) {
         document.getElementById('auth-token-input').value = savedToken;
+        // 如果是从 localStorage 读取的，勾选记住选项
+        if (rememberedToken) {
+          document.getElementById('auth-remember').checked = true;
+        }
         doAuth(true);  // auto-try saved token
       }
     }
@@ -193,7 +202,18 @@ const App = (() => {
     const params = authMode === 'none' ? {} : { token, clientName: 'OpenClaw4j UI' };
     try {
       await rpc('auth', params);
+
+      // 存储到 sessionStorage（当前会话）
       sessionStorage.setItem(STORAGE_TOKEN_KEY, token);
+
+      // 如果勾选了"记住"，同时存储到 localStorage
+      const remember = document.getElementById('auth-remember')?.checked;
+      if (remember) {
+        localStorage.setItem(STORAGE_TOKEN_REMEMBER_KEY, token);
+      } else {
+        localStorage.removeItem(STORAGE_TOKEN_REMEMBER_KEY);
+      }
+
       errEl.style.display = 'none';
       hideAuthOverlay();
       startHeartbeat();
