@@ -33,7 +33,7 @@ OpenClaw4j 是 [OpenClaw](https://openclaw.ai) 概念的轻量级 Java 实现。
 ### 构建
 
 ```bash
-git clone <仓库地址>
+git clone https://github.com/shaochuanli/openclaw4j.git
 cd openclaw4j
 mvn package -DskipTests
 ```
