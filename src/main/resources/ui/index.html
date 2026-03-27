@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenClaw4j — Control Panel</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦞</text></svg>">
+<style>
+  /* ── Reset & Base ─────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:        #0d0f14;
+    --bg2:       #151820;
+    --bg3:       #1c2030;
+    --border:    #2a2f3e;
+    --accent:    #FF5F36;
+    --accent2:   #ff7a57;
+    --text:      #e2e8f0;
+    --text2:     #94a3b8;
+    --text3:     #64748b;
+    --green:     #22c55e;
+    --yellow:    #eab308;
+    --red:       #ef4444;
+    --blue:      #3b82f6;
+    --radius:    10px;
+    --font:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+  /* ── Layout ──────────────────────────────────────────── */
+  #app { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+
+  /* ── Sidebar ─────────────────────────────────────────── */
+  #sidebar {
+    width: 220px; flex-shrink: 0;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-icon { font-size: 26px; line-height: 1; }
+  .logo-text { font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: -0.3px; }
+  .logo-version { font-size: 10px; color: var(--text3); margin-top: 1px; }
+
+  .nav-section { padding: 8px 8px 0; }
+  .nav-label {
+    font-size: 10px; font-weight: 600; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 8px 8px 4px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 10px; border-radius: 7px; cursor: pointer;
+    color: var(--text2); font-size: 13.5px; font-weight: 500;
+    transition: all 0.15s; user-select: none;
+    margin-bottom: 2px;
+  }
+  .nav-item:hover { background: var(--bg3); color: var(--text); }
+  .nav-item.active { background: rgba(255,95,54,0.12); color: var(--accent); }
+  .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+  .nav-item .badge {
+    margin-left: auto; background: var(--accent);
+    color: white; font-size: 10px; padding: 1px 6px;
+    border-radius: 10px; font-weight: 600;
+  }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .conn-status {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12px; color: var(--text3);
+  }
+  .conn-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--red); flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .conn-dot.online { background: var(--green); }
+  .conn-dot.connecting { background: var(--yellow); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── Main content ────────────────────────────────────── */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .view { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .view.active { display: flex; }
+
+  /* ── Page header ─────────────────────────────────────── */
+  .page-header {
+    padding: 16px 24px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .page-title { font-size: 16px; font-weight: 700; }
+  .page-subtitle { font-size: 12px; color: var(--text3); margin-top: 1px; }
+  .page-actions { margin-left: auto; display: flex; gap: 8px; }
+
+  /* ── Buttons ─────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 7px; font-size: 13px;
+    font-weight: 500; cursor: pointer; border: none;
+    transition: all 0.15s; font-family: var(--font);
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--border); color: var(--text); }
+  .btn-danger { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Cards ───────────────────────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600; font-size: 13px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-body { padding: 16px; }
+
+  /* ── Status badges ───────────────────────────────────── */
+  .badge-status {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  }
+  .badge-status::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .badge-online { background: rgba(34,197,94,0.12); color: var(--green); }
+  .badge-offline { background: rgba(100,116,139,0.12); color: var(--text3); }
+  .badge-error { background: rgba(239,68,68,0.12); color: var(--red); }
+  .badge-disabled { background: rgba(100,116,139,0.1); color: var(--text3); }
+
+  /* ═══════════════════════════════════════════════════════
+     CHAT VIEW
+  ════════════════════════════════════════════════════════ */
+  #view-chat { flex-direction: row; overflow: hidden; }
+
+  .chat-sidebar {
+    width: 240px; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    background: var(--bg2);
+  }
+  .chat-sidebar-header {
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .chat-sidebar-header h3 { font-size: 13px; font-weight: 600; flex: 1; }
+  .chat-session-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .chat-session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 10px; border-radius: 7px; cursor: pointer;
+    transition: all 0.15s; margin-bottom: 2px;
+  }
+  .chat-session-item:hover { background: var(--bg3); }
+  .chat-session-item.active { background: rgba(255,95,54,0.1); }
+  .chat-session-info { flex: 1; min-width: 0; overflow: hidden; }
+  .chat-session-name { font-size: 13px; font-weight: 500; }
+  .chat-session-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .chat-session-preview { font-size: 11px; color: var(--text2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-session-delete {
+    opacity: 0;
+    background: transparent;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .chat-session-item:hover .chat-session-delete { opacity: 1; }
+  .chat-session-delete:hover { color: var(--red); background: rgba(239,68,68,0.15); }
+
+  .chat-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .chat-header {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg2); flex-shrink: 0;
+  }
+  .chat-header-info { flex: 1; }
+  .chat-header-title { font-size: 14px; font-weight: 600; }
+  .chat-header-meta { font-size: 11px; color: var(--text3); }
+  .agent-select {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); padding: 5px 10px; border-radius: 6px;
+    font-size: 12px; font-family: var(--font); cursor: pointer;
+  }
+
+  .chat-messages {
+    flex: 1; overflow-y: auto;
+    padding: 20px 24px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .chat-message { display: flex; gap: 12px; max-width: 820px; }
+  .chat-message.user { flex-direction: row-reverse; align-self: flex-end; }
+  .chat-message.assistant { align-self: flex-start; }
+  .chat-message.system { align-self: center; }
+
+  .msg-avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; color: white;
+  }
+  .msg-avatar.user { background: var(--accent); font-size: 13px; }
+  .msg-avatar.assistant { background: var(--bg3); border: 1px solid var(--border); font-size: 18px; }
+
+  .msg-content { max-width: 640px; }
+  .msg-bubble {
+    padding: 10px 14px; border-radius: 12px;
+    line-height: 1.6; font-size: 14px; word-break: break-word;
+  }
+  .msg-bubble.user {
+    background: var(--accent); color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-bubble.assistant {
+    background: var(--bg3); color: var(--text);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+  .msg-bubble.system {
+    background: rgba(59,130,246,0.08); color: var(--text2);
+    border: 1px solid rgba(59,130,246,0.2); font-size: 12px;
+    border-radius: 8px;
+  }
+  .msg-bubble pre {
+    background: rgba(0,0,0,0.4); border-radius: 6px;
+    padding: 10px 12px; margin: 8px 0; overflow-x: auto;
+    font-size: 12.5px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .msg-bubble code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12.5px; background: rgba(0,0,0,0.3);
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .msg-bubble pre code { background: none; padding: 0; }
+  .msg-meta { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .chat-message.user .msg-meta { text-align: right; }
+
+  .typing-indicator {
+    display: flex; gap: 5px; align-items: center;
+    padding: 10px 14px; background: var(--bg3);
+    border: 1px solid var(--border); border-radius: 12px;
+    border-bottom-left-radius: 4px;
+  }
+  .typing-dot {
+    width: 7px; height: 7px; background: var(--text3);
+    border-radius: 50%; animation: typingBounce 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+  /* Tool Call Cards */
+  .tool-call-card {
+    align-self: flex-start;
+    max-width: 640px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    margin-left: 44px;
+  }
+  .tool-call-card.running { border-left-color: #f59e0b; opacity: 0.9; }
+  .tool-call-card.success { border-left-color: #22c55e; }
+  .tool-call-card.failed  { border-left-color: #ef4444; }
+  .tc-header { display: flex; align-items: center; gap: 8px; }
+  .tc-spinner { font-size: 14px; }
+  .tool-call-card.running .tc-spinner { animation: spinGear 1s linear infinite; }
+  @keyframes spinGear { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .tc-name { font-weight: 600; color: var(--accent); }
+  .tc-status { color: var(--text3); font-size: 11px; margin-left: auto; }
+  .tc-args { margin-top: 5px; color: var(--text2); font-size: 11.5px; line-height: 1.5; }
+  .tc-arg-key { color: #a78bfa; }
+  .tc-arg-val { color: var(--text); }
+  .tc-result { margin-top: 4px; }
+  .tc-output {
+    background: rgba(0,0,0,0.35); border-radius: 4px; padding: 6px 8px;
+    margin: 0; white-space: pre-wrap; word-break: break-all;
+    font-size: 11px; color: var(--text2); max-height: 100px; overflow-y: auto;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .chat-input-area {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2); flex-shrink: 0;
+  }
+  .chat-input-box {
+    display: flex; gap: 10px; align-items: flex-end;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 14px;
+    transition: border-color 0.2s;
+  }
+  .chat-input-box:focus-within { border-color: var(--accent); }
+  .chat-textarea {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-size: 14px; font-family: var(--font);
+    resize: none; max-height: 160px; min-height: 24px;
+    line-height: 1.5;
+  }
+  .chat-textarea::placeholder { color: var(--text3); }
+  .chat-send-btn {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.15s;
+    color: white; font-size: 16px;
+  }
+  .chat-send-btn:hover:not(:disabled) { background: var(--accent2); transform: scale(1.05); }
+  .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .chat-hint { font-size: 11px; color: var(--text3); margin-top: 6px; text-align: right; }
+
+  /* ═══════════════════════════════════════════════════════
+     OVERVIEW / DASHBOARD
+  ════════════════════════════════════════════════════════ */
+  .overview-body {
+    flex: 1; overflow-y: auto; padding: 20px 24px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .stat-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+  }
+  .stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .stat-value { font-size: 28px; font-weight: 700; margin-top: 6px; color: var(--text); }
+  .stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .stat-card.accent .stat-value { color: var(--accent); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  /* ═══════════════════════════════════════════════════════
+     CHANNELS
+  ════════════════════════════════════════════════════════ */
+  .channels-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .channel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .channel-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .channel-card-header { display: flex; align-items: center; gap: 12px; }
+  .channel-icon { font-size: 28px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: var(--bg3); border-radius: 10px; }
+  .channel-name { font-size: 15px; font-weight: 600; }
+  .channel-id { font-size: 11px; color: var(--text3); }
+  .channel-actions { display: flex; gap: 8px; margin-top: auto; }
+
+  /* ═══════════════════════════════════════════════════════
+     SESSIONS
+  ════════════════════════════════════════════════════════ */
+  .sessions-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .sessions-table { width: 100%; border-collapse: collapse; }
+  .sessions-table th {
+    text-align: left; padding: 8px 12px;
+    font-size: 11px; color: var(--text3); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sessions-table td {
+    padding: 10px 12px; font-size: 13px;
+    border-bottom: 1px solid rgba(42,47,62,0.5);
+    vertical-align: middle;
+  }
+  .sessions-table tr:hover td { background: var(--bg3); }
+  .session-key { font-family: monospace; font-size: 12px; color: var(--accent); }
+
+  /* ═══════════════════════════════════════════════════════
+     CRON
+  ════════════════════════════════════════════════════════ */
+  .cron-body { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .cron-item {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .cron-item-info { flex: 1; }
+  .cron-item-name { font-size: 14px; font-weight: 600; }
+  .cron-item-meta { font-size: 12px; color: var(--text3); margin-top: 3px; }
+  .cron-schedule { font-family: monospace; font-size: 12px; color: var(--blue); background: rgba(59,130,246,0.1); padding: 2px 8px; border-radius: 4px; }
+  .cron-item-actions { display: flex; gap: 8px; }
+
+  /* ═══════════════════════════════════════════════════════
+     MODELS / AGENTS
+  ════════════════════════════════════════════════════════ */
+  .models-body { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .model-item {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .model-icon { font-size: 22px; }
+  .model-info { flex: 1; }
+  .model-name { font-size: 14px; font-weight: 600; }
+  .model-meta { font-size: 12px; color: var(--text3); margin-top: 3px; }
+  .model-badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    background: rgba(59,130,246,0.1); color: var(--blue); border: 1px solid rgba(59,130,246,0.2);
+    font-weight: 500;
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     CONFIG EDITOR
+  ════════════════════════════════════════════════════════ */
+  .config-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 20px 24px; gap: 14px; }
+  .config-toolbar { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .config-editor-wrap { flex: 1; overflow: hidden; border-radius: var(--radius); border: 1px solid var(--border); }
+  #config-editor {
+    width: 100%; height: 100%;
+    background: var(--bg2); color: var(--text);
+    border: none; outline: none; padding: 16px;
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px; line-height: 1.7; resize: none;
+    tab-size: 2;
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     LOGS
+  ════════════════════════════════════════════════════════ */
+  .logs-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .logs-toolbar {
+    padding: 12px 24px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 10px; align-items: center; flex-shrink: 0;
+    background: var(--bg2);
+  }
+  .log-filter {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); padding: 5px 10px; border-radius: 6px;
+    font-size: 12px; font-family: var(--font); flex: 1; max-width: 300px;
+    outline: none;
+  }
+  .log-filter:focus { border-color: var(--accent); }
+  #log-container {
+    flex: 1; overflow-y: auto; padding: 12px 24px;
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    font-size: 12px; line-height: 1.6; background: var(--bg);
+  }
+  .log-line { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+  .log-line.INFO  { color: var(--text2); }
+  .log-line.WARN  { color: var(--yellow); }
+  .log-line.ERROR { color: var(--red); }
+  .log-line.DEBUG { color: var(--text3); }
+
+  /* ═══════════════════════════════════════════════════════
+     MODALS
+  ════════════════════════════════════════════════════════ */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(4px);
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 14px; width: 480px; max-width: 94vw;
+    overflow: hidden; box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  }
+  .modal-header {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-title { font-size: 15px; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 20px; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+  .modal-close:hover { background: var(--bg3); color: var(--text); }
+  .modal-body { padding: 20px; }
+  .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ── Form elements ───────────────────────────────────── */
+  .form-group { margin-bottom: 14px; }
+  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+  .form-input, .form-select, .form-textarea {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 12px; border-radius: 7px;
+    font-size: 13px; font-family: var(--font); outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
+  .form-textarea { resize: vertical; min-height: 80px; }
+  .form-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+  /* ── Auth overlay ────────────────────────────────────── */
+  #auth-overlay {
+    position: fixed; inset: 0;
+    background: rgba(13,15,20,0.97);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2000; flex-direction: column; gap: 24px;
+  }
+  #auth-overlay.hidden { display: none; }
+  .auth-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px; width: 380px;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+  }
+  .auth-logo { text-align: center; margin-bottom: 24px; }
+  .auth-logo .logo-icon { font-size: 48px; display: block; margin-bottom: 8px; }
+  .auth-logo h1 { font-size: 20px; font-weight: 800; color: var(--accent); }
+  .auth-logo p { font-size: 13px; color: var(--text3); margin-top: 4px; }
+  .auth-error { color: var(--red); font-size: 12px; margin-top: 8px; display: none; }
+
+  /* ── Toast ───────────────────────────────────────────── */
+  #toast-container {
+    position: fixed; bottom: 20px; right: 20px;
+    display: flex; flex-direction: column; gap: 8px; z-index: 9999;
+  }
+  .toast {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px;
+    font-size: 13px; max-width: 340px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    animation: slideIn 0.25s ease;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error { border-left: 3px solid var(--red); }
+  .toast.info { border-left: 3px solid var(--blue); }
+  @keyframes slideIn { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
+
+  /* ── Empty state ─────────────────────────────────────── */
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+  .empty-state .icon { font-size: 48px; display: block; margin-bottom: 12px; }
+  .empty-state h3 { font-size: 15px; font-weight: 600; color: var(--text2); }
+  .empty-state p { font-size: 13px; margin-top: 6px; }
+
+  /* ── Loading spinner ─────────────────────────────────── */
+  .spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Usage stats ─────────────────────────────────────── */
+  .usage-bar-wrap { background: var(--bg3); border-radius: 4px; height: 6px; overflow: hidden; margin-top: 6px; }
+  .usage-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.5s; }
+
+  /* ── Responsive ──────────────────────────────────────── */
+  @media (max-width: 900px) {
+    #sidebar { width: 56px; }
+    .nav-item span, .nav-label, .logo-text, .logo-version, .sidebar-footer { display: none; }
+    .nav-item { justify-content: center; padding: 10px; }
+    .nav-item .icon { width: auto; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .chat-sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Auth overlay -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="logo-icon">🦞</span>
+      <h1>OpenClaw4j</h1>
+      <p>Personal AI Assistant Gateway</p>
+    </div>
+    <div id="auth-token-form">
+      <div class="form-group">
+        <label class="form-label">Access Token</label>
+        <input type="password" class="form-input" id="auth-token-input" placeholder="Paste your token..." autocomplete="off">
+        <div class="form-hint">Configure token in ~/.openclaw4j/openclaw4j.json</div>
+      </div>
+      <div class="auth-error" id="auth-error">Invalid token. Please try again.</div>
+      <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="App.doAuth()">Connect</button>
+    </div>
+    <div id="auth-none-form" style="display:none">
+      <p style="color:var(--text2);font-size:13px;text-align:center;margin-bottom:16px">
+        Connecting to OpenClaw4j gateway...
+      </p>
+      <div style="text-align:center"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <span class="logo-icon">🦞</span>
+      <div>
+        <div class="logo-text">OpenClaw4j</div>
+        <div class="logo-version">v1.0.0</div>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Main</div>
+      <div class="nav-item active" data-view="chat" onclick="App.switchView('chat')">
+        <span class="icon">💬</span><span>Chat</span>
+      </div>
+      <div class="nav-item" data-view="overview" onclick="App.switchView('overview')">
+        <span class="icon">📊</span><span>Overview</span>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Manage</div>
+      <div class="nav-item" data-view="channels" onclick="App.switchView('channels')">
+        <span class="icon">📡</span><span>Channels</span>
+      </div>
+      <div class="nav-item" data-view="sessions" onclick="App.switchView('sessions')">
+        <span class="icon">🗂️</span><span>Sessions</span>
+      </div>
+      <div class="nav-item" data-view="cron" onclick="App.switchView('cron')">
+        <span class="icon">⏰</span><span>Cron Jobs</span>
+      </div>
+      <div class="nav-item" data-view="skills" onclick="App.switchView('skills')">
+        <span class="icon">🧩</span><span>Skills</span>
+      </div>
+      <div class="nav-item" data-view="models" onclick="App.switchView('models')">
+        <span class="icon">🤖</span><span>Models</span>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Dev</div>
+      <div class="nav-item" data-view="config" onclick="App.switchView('config')">
+        <span class="icon">⚙️</span><span>Config</span>
+      </div>
+      <div class="nav-item" data-view="logs" onclick="App.switchView('logs')">
+        <span class="icon">📋</span><span>Logs</span>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="conn-status">
+        <div class="conn-dot connecting" id="conn-dot"></div>
+        <span id="conn-label">Connecting...</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main id="main">
+
+    <!-- ── CHAT ─────────────────────────────────────────── -->
+    <div class="view active" id="view-chat">
+      <div class="chat-sidebar">
+        <div class="chat-sidebar-header">
+          <h3>Conversations</h3>
+          <button class="btn btn-sm btn-ghost" onclick="App.newChatSession()" title="New chat">＋</button>
+        </div>
+        <div class="chat-session-list" id="chat-session-list">
+          <div class="chat-session-item active" data-session="webchat:default" onclick="App.selectSession('webchat:default')">
+            <div class="chat-session-name">🌐 Web Chat</div>
+            <div class="chat-session-meta">webchat:default</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-main">
+        <div class="chat-header">
+          <div class="chat-header-info">
+            <div class="chat-header-title" id="chat-title">Web Chat</div>
+            <div class="chat-header-meta" id="chat-meta">webchat:default</div>
+          </div>
+          <select class="agent-select" id="agent-select" style="display:none">
+            <option value="default">🤖 Default Agent</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" onclick="App.resetCurrentSession()" title="Reset session">🔄 Reset</button>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-message system">
+            <div class="msg-bubble system">👋 Welcome to OpenClaw4j! Type a message to start chatting with your AI assistant.</div>
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <div class="chat-input-box">
+            <textarea
+              class="chat-textarea" id="chat-input"
+              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+              rows="1"
+            ></textarea>
+            <button class="chat-send-btn" id="chat-send-btn" onclick="App.sendMessage()">
+              ➤
+            </button>
+          </div>
+          <div class="chat-hint">
+            <span id="usage-hint"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── OVERVIEW ──────────────────────────────────────── -->
+    <div class="view" id="view-overview">
+      <div class="page-header">
+        <div>
+          <div class="page-title">📊 Overview</div>
+          <div class="page-subtitle">System status and statistics</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="App.refreshOverview()">🔄 Refresh</button>
+        </div>
+      </div>
+      <div class="overview-body">
+        <div class="stats-grid">
+          <div class="stat-card accent">
+            <div class="stat-label">Total Requests</div>
+            <div class="stat-value" id="stat-requests">—</div>
+            <div class="stat-sub">all time</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Input Tokens</div>
+            <div class="stat-value" id="stat-input-tokens">—</div>
+            <div class="stat-sub">cumulative</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Output Tokens</div>
+            <div class="stat-value" id="stat-output-tokens">—</div>
+            <div class="stat-sub">cumulative</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Active Sessions</div>
+            <div class="stat-value" id="stat-sessions">—</div>
+            <div class="stat-sub">connected clients</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">📡 Channel Status</div>
+            <div class="card-body" id="overview-channels">
+              <div class="spinner"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">🤖 Configured Agents</div>
+            <div class="card-body" id="overview-agents">
+              <div class="spinner"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CHANNELS ──────────────────────────────────────── -->
+    <div class="view" id="view-channels">
+      <div class="page-header">
+        <div>
+          <div class="page-title">📡 Channels</div>
+          <div class="page-subtitle">Manage messaging platform connections</div>
+        </div>
+      </div>
+      <div class="channels-body">
+        <div class="channel-grid" id="channel-grid">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SESSIONS ──────────────────────────────────────── -->
+    <div class="view" id="view-sessions">
+      <div class="page-header">
+        <div>
+          <div class="page-title">🗂️ Sessions</div>
+          <div class="page-subtitle">Manage conversation history</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="App.loadSessions()">🔄 Refresh</button>
+        </div>
+      </div>
+      <div class="sessions-body">
+        <table class="sessions-table">
+          <thead>
+            <tr>
+              <th>Session Key</th>
+              <th>Channel</th>
+              <th>Messages</th>
+              <th>Last Active</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sessions-tbody">
+            <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text3)"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── CRON ──────────────────────────────────────────── -->
+    <div class="view" id="view-cron">
+      <div class="page-header">
+        <div>
+          <div class="page-title">⏰ Cron Jobs</div>
+          <div class="page-subtitle">Scheduled AI agent tasks</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-primary" onclick="App.showAddCronModal()">＋ Add Job</button>
+        </div>
+      </div>
+      <div class="cron-body" id="cron-list">
+        <div class="empty-state">
+          <span class="icon">⏰</span>
+          <h3>No cron jobs yet</h3>
+          <p>Add a scheduled job to run your AI agent automatically.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MODELS ────────────────────────────────────────── -->
+    <div class="view" id="view-models">
+      <div class="page-header">
+        <div>
+          <div class="page-title">🤖 Models</div>
+          <div class="page-subtitle">Available AI models and providers</div>
+        </div>
+      </div>
+      <div class="models-body" id="models-list">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <!-- ── CONFIG ────────────────────────────────────────── -->
+    <div class="view" id="view-config">
+      <div class="page-header">
+        <div>
+          <div class="page-title">⚙️ Configuration</div>
+          <div class="page-subtitle">Edit openclaw4j.json</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="App.loadConfig()">🔄 Reload</button>
+          <button class="btn btn-primary" onclick="App.saveConfig()">💾 Save</button>
+        </div>
+      </div>
+      <div class="config-body">
+        <textarea id="config-editor" spellcheck="false" placeholder="Loading configuration..."></textarea>
+      </div>
+    </div>
+
+    <!-- ── LOGS ──────────────────────────────────────────── -->
+    <div class="view" id="view-logs">
+      <div class="page-header">
+        <div>
+          <div class="page-title">📋 Logs</div>
+          <div class="page-subtitle">Real-time server logs</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="App.clearLogs()">🗑 Clear</button>
+          <button class="btn btn-ghost" id="log-follow-btn" onclick="App.toggleLogFollow()">📌 Follow</button>
+        </div>
+      </div>
+      <div class="logs-body">
+        <div class="logs-toolbar">
+          <input type="text" class="log-filter" id="log-filter" placeholder="Filter logs..." oninput="App.filterLogs()">
+          <select class="agent-select" id="log-level-filter" onchange="App.filterLogs()">
+            <option value="">All levels</option>
+            <option value="INFO">INFO</option>
+            <option value="WARN">WARN</option>
+            <option value="ERROR">ERROR</option>
+            <option value="DEBUG">DEBUG</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="App.refreshLogs()">🔄 Refresh</button>
+        </div>
+        <div id="log-container"></div>
+      </div>
+    </div>
+
+    <!-- ── SKILLS ────────────────────────────────────────── -->
+    <div class="view" id="view-skills">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">🧩 Skills</h2>
+          <p class="page-sub">Installed skills &amp; SkillHub store</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="App.loadSkills()">🔄 Reload</button>
+          <button class="btn btn-primary" onclick="App.openSkillStore()">🏪 Store</button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:4px">
+        <button class="btn btn-ghost btn-sm skill-tab active" data-tab="installed" onclick="App.switchSkillTab('installed')">📦 Installed</button>
+        <button class="btn btn-ghost btn-sm skill-tab" data-tab="store" onclick="App.switchSkillTab('store')">🏪 Store</button>
+        <button class="btn btn-ghost btn-sm skill-tab" data-tab="install-url" onclick="App.switchSkillTab('install-url')">🔗 Install from URL</button>
+      </div>
+
+      <!-- Installed tab -->
+      <div id="skill-tab-installed">
+        <div id="skills-installed-list">
+          <div class="empty-state">
+            <span class="icon">🧩</span>
+            <h3>No skills installed</h3>
+            <p>Browse the store or install from a URL to get started.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Store tab -->
+      <div id="skill-tab-store" style="display:none">
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input type="text" class="form-input" id="skill-search-input" placeholder="Search skills..." style="flex:1" onkeydown="if(event.key==='Enter')App.searchSkills()">
+          <button class="btn btn-primary" onclick="App.searchSkills()">🔍 Search</button>
+        </div>
+        <div id="skills-store-list">
+          <div class="empty-state">
+            <span class="icon">🏪</span>
+            <h3>Loading store...</h3>
+            <p>Fetching featured skills from SkillHub.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Install from URL tab -->
+      <div id="skill-tab-install-url" style="display:none">
+        <div class="form-group" style="max-width:600px">
+          <label class="form-label">SKILL.md URL</label>
+          <input type="text" class="form-input" id="skill-url-input"
+                 placeholder="https://skillhub-xxx.cos.ap-guangzhou.myqcloud.com/install/skillhub.md">
+          <div class="form-hint">Paste the URL of a SKILL.md file to install it directly.</div>
+        </div>
+        <div class="form-group" style="max-width:600px">
+          <label class="form-label">Skill Name (optional)</label>
+          <input type="text" class="form-input" id="skill-name-input" placeholder="Auto-detect from SKILL.md">
+        </div>
+        <button class="btn btn-primary" onclick="App.installSkillFromUrl()" style="margin-top:4px">⬇️ Install</button>
+        <div id="skill-url-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Add Cron Modal ──────────────────────────────────── -->
+<div class="modal-overlay hidden" id="cron-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add Cron Job</span>
+      <button class="modal-close" onclick="App.closeCronModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Job Name</label>
+        <input type="text" class="form-input" id="cron-name" placeholder="Daily report">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cron Schedule</label>
+        <input type="text" class="form-input" id="cron-schedule" placeholder="0 9 * * *">
+        <div class="form-hint">Standard cron expression. Example: <code>0 9 * * *</code> = every day at 9am</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prompt</label>
+        <textarea class="form-textarea" id="cron-prompt" placeholder="Generate a daily summary of today's tasks..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Agent</label>
+        <select class="form-select" id="cron-agent">
+          <option value="default">Default Agent</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="App.closeCronModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="App.addCronJob()">Add Job</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script src="/ui/app.js"></script>
+</body>
+</html>
