@@ -348,6 +348,14 @@
   }
   .chat-send-btn:hover:not(:disabled) { background: var(--accent2); transform: scale(1.05); }
   .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .chat-stop-btn {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--red); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.15s;
+    color: white; font-size: 14px;
+  }
+  .chat-stop-btn:hover { background: #dc2626; transform: scale(1.05); }
   .chat-hint { font-size: 11px; color: var(--text3); margin-top: 6px; text-align: right; }
 
   /* ═══════════════════════════════════════════════════════
@@ -418,6 +426,9 @@
   .cron-item-meta { font-size: 12px; color: var(--text3); margin-top: 3px; }
   .cron-schedule { font-family: monospace; font-size: 12px; color: var(--blue); background: rgba(59,130,246,0.1); padding: 2px 8px; border-radius: 4px; }
   .cron-item-actions { display: flex; gap: 8px; }
+  .cron-item.running { border-left: 3px solid var(--accent); background: rgba(255,95,54,0.05); }
+  .cron-status-badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
+  .cron-status-badge.running { background: var(--accent); color: white; animation: pulse 1.5s infinite; }
 
   /* ═══════════════════════════════════════════════════════
      MODELS / AGENTS
@@ -716,7 +727,7 @@
               placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
               rows="1"
             ></textarea>
-            <button class="chat-send-btn" id="chat-send-btn" onclick="App.sendMessage()">
+            <button class="chat-send-btn" id="chat-send-btn">
               ➤
             </button>
           </div>
@@ -965,6 +976,79 @@
     </div>
 
   </main>
+</div>
+
+<!-- ── Feishu Config Modal ──────────────────────────────────── -->
+<div class="modal-overlay hidden" id="feishu-modal">
+  <div class="modal" style="width:520px">
+    <div class="modal-header">
+      <span class="modal-title">🟢 飞书通道配置</span>
+      <button class="modal-close" onclick="App.closeFeishuModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">启用状态</label>
+        <select class="form-select" id="feishu-enabled">
+          <option value="false">禁用</option>
+          <option value="true">启用</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">App ID *</label>
+        <input type="text" class="form-input" id="feishu-appId" placeholder="cli_xxxxxxxxxxxx">
+      </div>
+      <div class="form-group">
+        <label class="form-label">App Secret *</label>
+        <input type="password" class="form-input" id="feishu-appSecret" placeholder="应用密钥">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Encrypt Key（可选）</label>
+        <input type="password" class="form-input" id="feishu-encryptKey" placeholder="加密密钥">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Verification Token（可选）</label>
+        <input type="text" class="form-input" id="feishu-verificationToken" placeholder="验证令牌">
+      </div>
+      <div style="display:flex;gap:12px">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">域名</label>
+          <select class="form-select" id="feishu-domain">
+            <option value="feishu">飞书（国内）</option>
+            <option value="lark">Lark（国际）</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label class="form-label">连接模式</label>
+          <select class="form-select" id="feishu-connectionMode">
+            <option value="websocket">WebSocket（推荐）</option>
+            <option value="webhook">Webhook</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">私信策略</label>
+          <select class="form-select" id="feishu-dmPolicy">
+            <option value="open">开放（所有人）</option>
+            <option value="pairing">配对模式</option>
+            <option value="closed">关闭</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label class="form-label">群聊策略</label>
+          <select class="form-select" id="feishu-groupPolicy">
+            <option value="open">开放</option>
+            <option value="allowlist">白名单</option>
+            <option value="closed">关闭</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="App.closeFeishuModal()">取消</button>
+      <button class="btn btn-primary" onclick="App.saveFeishuConfig()">保存</button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Add Cron Modal ──────────────────────────────────── -->

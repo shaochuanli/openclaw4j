@@ -4,6 +4,7 @@ import ai.openclaw.agents.AgentManager;
 import ai.openclaw.channels.FeishuChannel;
 import ai.openclaw.channels.TelegramChannel;
 import ai.openclaw.config.ConfigManager;
+import ai.openclaw.config.OpenClaw4jConfig;
 import ai.openclaw.cron.CronManager;
 import ai.openclaw.skills.SkillManager;
 import ai.openclaw.tools.builtin.CronTool;
@@ -142,6 +143,12 @@ public class GatewayServer {
         // 启动消息通道
         startChannels();
 
+        // 注册配置变更监听器，支持通道热重载
+        configManager.onConfigChanged(() -> {
+            log.info("Config changed, reloading channels...");
+            reloadChannels();
+        });
+
         log.info("Gateway server started on port {}", port);
     }
 
@@ -220,6 +227,48 @@ public class GatewayServer {
     }
 
     /**
+     * 热重载所有通道（配置变更时调用）。
+     */
+    private void reloadChannels() {
+        reloadFeishuChannel();
+    }
+
+    /**
+     * 热重载飞书通道。
+     */
+    private void reloadFeishuChannel() {
+        OpenClaw4jConfig.FeishuConfig newConfig = configManager.getConfig().channels.feishu;
+
+        // 停止现有通道
+        if (feishuChannel != null) {
+            feishuChannel.stop();
+            log.info("Feishu channel stopped for reload");
+        }
+
+        // 启动新配置的通道
+        if (newConfig != null && newConfig.enabled) {
+            try {
+                feishuChannel = new FeishuChannel(configManager, agentManager);
+                feishuChannel.start();
+
+                // 注册飞书事件 Webhook（如果使用 webhook 模式）
+                if (feishuChannel.isRunning() && context != null && "webhook".equals(newConfig.connectionMode)) {
+                    String webhookPath = newConfig.webhookPath != null ? newConfig.webhookPath : "/feishu/events";
+                    context.addServlet(new ServletHolder(new FeishuWebhookServlet(feishuChannel, mapper)), webhookPath);
+                    log.info("Feishu webhook registered at {}", webhookPath);
+                }
+
+                log.info("Feishu channel reloaded: {}", feishuChannel.getStatus());
+            } catch (Exception e) {
+                log.error("Failed to reload Feishu channel", e);
+            }
+        } else {
+            feishuChannel = null;
+            log.info("Feishu channel disabled");
+        }
+    }
+
+    /**
      * 获取 Telegram 通道实例。
      *
      * @return Telegram 通道实例，如果未启动则返回 null
@@ -245,6 +294,7 @@ public class GatewayServer {
     private void startCronManager() {
         try {
             cronManager = new CronManager(configManager, agentManager, sessionRegistry);
+            agentManager.setCronManager(cronManager);
             cronManager.start();
 
             // 注入 CronTool 到 AgentManager

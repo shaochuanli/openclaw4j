@@ -11,6 +11,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +63,9 @@ public class CronManager {
 
     /** 内存中的执行历史（最近50条） */
     private final Map<String, List<CronRun>> runHistory = new ConcurrentHashMap<>();
+
+    /** 正在运行的任务（jobId -> CronRun） */
+    private final Map<String, CronRun> runningJobs = new ConcurrentHashMap<>();
 
     /** 调度状态存储 */
     private final CronStateStore stateStore;
@@ -168,6 +172,10 @@ public class CronManager {
         log.info("Executing missed job: {} ({})", job.name, job.id);
         CronRun run = new CronRun(job.id);
         run.startedAt = System.currentTimeMillis();
+        run.jobName = job.name;
+
+        // 记录为正在运行
+        runningJobs.put(job.id, run);
 
         String sessionKey = "cron:" + job.id;
 
@@ -179,6 +187,9 @@ public class CronManager {
                 run.completedAt = System.currentTimeMillis();
                 run.status = "completed";
                 run.output = fullResponse.length() > 1000 ? fullResponse.substring(0, 1000) + "..." : fullResponse;
+
+                // 从运行列表移除
+                runningJobs.remove(job.id);
 
                 // 更新状态
                 stateStore.updateFire(job.id, run.startedAt);
@@ -193,6 +204,9 @@ public class CronManager {
                 run.completedAt = System.currentTimeMillis();
                 run.status = "failed";
                 run.error = error;
+
+                // 从运行列表移除
+                runningJobs.remove(job.id);
 
                 stateStore.updateFire(job.id, run.startedAt);
                 historyStore.append(run);
@@ -228,6 +242,7 @@ public class CronManager {
             dataMap.put("agentManager", agentManager);
             dataMap.put("sessionRegistry", sessionRegistry);
             dataMap.put("runHistory", runHistory);
+            dataMap.put("runningJobs", runningJobs);
             dataMap.put("stateStore", stateStore);
             dataMap.put("historyStore", historyStore);
 
@@ -273,6 +288,63 @@ public class CronManager {
         return runHistory.getOrDefault(jobId, new ArrayList<>());
     }
 
+    /**
+     * 获取正在运行的任务。
+     *
+     * @param jobId 任务ID
+     * @return 正在运行的执行记录，不存在时返回null
+     */
+    public CronRun getRunningJob(String jobId) {
+        return runningJobs.get(jobId);
+    }
+
+    /**
+     * 获取所有正在运行的任务。
+     *
+     * @return 正在运行的任务映射
+     */
+    public Map<String, CronRun> getAllRunningJobs() {
+        return new HashMap<>(runningJobs);
+    }
+
+    /**
+     * 停止正在运行的任务。
+     *
+     * @param jobId 任务ID
+     * @return 是否成功停止（false表示任务不存在或未在运行）
+     */
+    public boolean stopJob(String jobId) {
+        CronRun run = runningJobs.get(jobId);
+        if (run == null) {
+            return false;
+        }
+
+        // 标记为已停止
+        run.status = "stopped";
+        run.completedAt = System.currentTimeMillis();
+        run.error = "Job stopped by user";
+
+        // 从运行列表中移除
+        runningJobs.remove(jobId);
+
+        // 记录到历史
+        historyStore.append(run);
+        addRunHistory(runHistory, jobId, run);
+
+        log.info("Stopped cron job: {}", jobId);
+        return true;
+    }
+
+    /**
+     * 检查任务是否正在运行。
+     *
+     * @param jobId 任务ID
+     * @return 是否正在运行
+     */
+    public boolean isRunning(String jobId) {
+        return runningJobs.containsKey(jobId);
+    }
+
     // ─── 任务执行器 ────────────────────────────────────────────────────────
 
     /**
@@ -298,6 +370,9 @@ public class CronManager {
             @SuppressWarnings("unchecked")
             Map<String, List<CronRun>> runHistory =
                 (Map<String, List<CronRun>>) data.get("runHistory");
+            @SuppressWarnings("unchecked")
+            Map<String, CronRun> runningJobs =
+                (Map<String, CronRun>) data.get("runningJobs");
             CronStateStore stateStore = (CronStateStore) data.get("stateStore");
             CronHistoryStore historyStore = (CronHistoryStore) data.get("historyStore");
 
@@ -306,6 +381,12 @@ public class CronManager {
 
             CronRun run = new CronRun(job.id);
             run.startedAt = System.currentTimeMillis();
+            run.jobName = job.name;
+
+            // 记录为正在运行
+            if (runningJobs != null) {
+                runningJobs.put(job.id, run);
+            }
 
             // 更新调度状态
             if (stateStore != null) {
@@ -322,6 +403,11 @@ public class CronManager {
                     run.completedAt = System.currentTimeMillis();
                     run.status = "completed";
                     run.output = fullResponse.length() > 1000 ? fullResponse.substring(0, 1000) + "..." : fullResponse;
+
+                    // 从运行列表移除
+                    if (runningJobs != null) {
+                        runningJobs.remove(job.id);
+                    }
 
                     // 持久化历史
                     if (historyStore != null) {
@@ -344,6 +430,11 @@ public class CronManager {
                     run.completedAt = System.currentTimeMillis();
                     run.status = "failed";
                     run.error = error;
+
+                    // 从运行列表移除
+                    if (runningJobs != null) {
+                        runningJobs.remove(job.id);
+                    }
 
                     if (historyStore != null) {
                         historyStore.append(run);
@@ -372,6 +463,8 @@ public class CronManager {
     public static class CronRun {
         /** 任务ID */
         public String jobId;
+        /** 任务名称 */
+        public String jobName;
         /** 执行记录ID */
         public String id;
         /** 开始时间戳（毫秒） */

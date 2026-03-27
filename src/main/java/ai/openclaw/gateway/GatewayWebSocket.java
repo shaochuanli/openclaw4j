@@ -167,6 +167,8 @@ public class GatewayWebSocket {
             case "cron.add" -> handleCronAdd(req, params);
             case "cron.remove" -> handleCronRemove(req, params);
             case "cron.run" -> handleCronRun(req, params);
+            case "cron.stop" -> handleCronStop(req, params);
+            case "cron.status" -> handleCronStatus(req, params);
             case "usage.status" -> handleUsageStatus(req);
             case "logs.tail" -> handleLogsTail(req, params);
             case "skills.list"          -> handleSkillsList(req, params);
@@ -960,7 +962,33 @@ public class GatewayWebSocket {
      * @param req 请求帧
      */
     private void handleCronList(GatewayProtocol.RequestFrame req) {
-        sendResponse(req.id, configManager.getConfig().cron);
+        List<Map<String, Object>> jobs = new ArrayList<>();
+        ai.openclaw.cron.CronManager cronManager = agentManager.getCronManager();
+
+        for (var job : configManager.getConfig().cron) {
+            Map<String, Object> jobInfo = new LinkedHashMap<>();
+            jobInfo.put("id", job.id);
+            jobInfo.put("name", job.name);
+            jobInfo.put("schedule", job.schedule);
+            jobInfo.put("agentId", job.agentId);
+            jobInfo.put("prompt", job.prompt);
+            jobInfo.put("enabled", job.enabled);
+
+            // 检查运行状态
+            boolean isRunning = cronManager != null && cronManager.isRunning(job.id);
+            jobInfo.put("running", isRunning);
+
+            // 如果正在运行，添加运行详情
+            if (isRunning) {
+                ai.openclaw.cron.CronManager.CronRun run = cronManager.getRunningJob(job.id);
+                if (run != null) {
+                    jobInfo.put("startedAt", run.startedAt);
+                }
+            }
+
+            jobs.add(jobInfo);
+        }
+        sendResponse(req.id, jobs);
     }
 
     /**
@@ -1004,21 +1032,122 @@ public class GatewayWebSocket {
         String id = params != null && params.has("id") ? params.get("id").asText() : null;
         if (id == null) { sendError(req.id, "INVALID_PARAMS", "Missing id"); return; }
 
+        ai.openclaw.cron.CronManager cronManager = agentManager.getCronManager();
+
+        // 检查是否已在运行
+        if (cronManager != null && cronManager.isRunning(id)) {
+            sendError(req.id, "ALREADY_RUNNING", "Job is already running");
+            return;
+        }
+
         configManager.getConfig().cron.stream()
             .filter(j -> id.equals(j.id))
             .findFirst()
             .ifPresentOrElse(job -> {
-                agentManager.runAsync(job.agentId, "cron:" + job.id, job.prompt, new AgentManager.AgentCallback() {
+                String sessionKey = "cron:" + job.id;
+
+                // 记录运行状态
+                if (cronManager != null) {
+                    ai.openclaw.cron.CronManager.CronRun run = new ai.openclaw.cron.CronManager.CronRun(job.id);
+                    run.startedAt = System.currentTimeMillis();
+                    run.jobName = job.name;
+                    cronManager.getRunningJobs().put(job.id, run);
+                }
+
+                agentManager.runAsync(job.agentId, sessionKey, job.prompt, new AgentManager.AgentCallback() {
                     @Override public void onChunk(String chunk) {}
                     @Override public void onComplete(String fullResponse, ai.openclaw.agents.UsageStats usage) {
-                        sendEvent("cron", Map.of("jobId", id, "status", "completed", "result", fullResponse));
+                        // 从运行列表移除
+                        if (cronManager != null) {
+                            cronManager.getRunningJobs().remove(job.id);
+                        }
+                        sendEvent("cron", Map.of("jobId", id, "jobName", job.name, "sessionKey", sessionKey, "status", "completed", "result", fullResponse));
                     }
                     @Override public void onError(String error) {
-                        sendEvent("cron", Map.of("jobId", id, "status", "failed", "error", error));
+                        // 从运行列表移除
+                        if (cronManager != null) {
+                            cronManager.getRunningJobs().remove(job.id);
+                        }
+                        sendEvent("cron", Map.of("jobId", id, "jobName", job.name, "sessionKey", sessionKey, "status", "failed", "error", error));
                     }
                 });
                 sendResponse(req.id, Map.of("ok", true, "running", true));
             }, () -> sendError(req.id, "NOT_FOUND", "Cron job not found: " + id));
+    }
+
+    /**
+     * 停止正在运行的定时任务。
+     *
+     * @param req    请求帧
+     * @param params 参数（id）
+     */
+    private void handleCronStop(GatewayProtocol.RequestFrame req, JsonNode params) {
+        String id = params != null && params.has("id") ? params.get("id").asText() : null;
+        if (id == null) { sendError(req.id, "INVALID_PARAMS", "Missing id"); return; }
+
+        ai.openclaw.cron.CronManager cronManager = agentManager.getCronManager();
+        if (cronManager == null) {
+            sendError(req.id, "CRON_DISABLED", "Cron manager not available");
+            return;
+        }
+
+        boolean stopped = cronManager.stopJob(id);
+        if (stopped) {
+            // 中止 agent 执行
+            String sessionKey = "cron:" + id;
+            agentManager.abort(sessionKey);
+
+            sendResponse(req.id, Map.of("ok", true, "stopped", true));
+            sendEvent("cron", Map.of("jobId", id, "status", "stopped"));
+        } else {
+            sendError(req.id, "NOT_RUNNING", "Job is not running: " + id);
+        }
+    }
+
+    /**
+     * 获取定时任务运行状态。
+     *
+     * @param req    请求帧
+     * @param params 参数（id，可选）
+     */
+    private void handleCronStatus(GatewayProtocol.RequestFrame req, JsonNode params) {
+        ai.openclaw.cron.CronManager cronManager = agentManager.getCronManager();
+        if (cronManager == null) {
+            sendError(req.id, "CRON_DISABLED", "Cron manager not available");
+            return;
+        }
+
+        String id = params != null && params.has("id") ? params.get("id").asText() : null;
+
+        if (id != null) {
+            // 返回单个任务状态
+            boolean isRunning = cronManager.isRunning(id);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("id", id);
+            result.put("running", isRunning);
+            if (isRunning) {
+                ai.openclaw.cron.CronManager.CronRun run = cronManager.getRunningJob(id);
+                if (run != null) {
+                    result.put("startedAt", run.startedAt);
+                    result.put("elapsed", System.currentTimeMillis() - run.startedAt);
+                }
+            }
+            sendResponse(req.id, result);
+        } else {
+            // 返回所有运行中的任务
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("runningJobs", cronManager.getAllRunningJobs().entrySet().stream()
+                .map(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("jobId", e.getKey());
+                    m.put("jobName", e.getValue().jobName);
+                    m.put("startedAt", e.getValue().startedAt);
+                    m.put("elapsed", System.currentTimeMillis() - e.getValue().startedAt);
+                    return m;
+                })
+                .collect(java.util.stream.Collectors.toList()));
+            sendResponse(req.id, result);
+        }
     }
 
     // ─── 用量统计 ────────────────────────────────────────────────────────────────

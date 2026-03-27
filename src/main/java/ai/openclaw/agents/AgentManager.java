@@ -51,6 +51,12 @@ public class AgentManager {
      */
     private volatile SkillManager skillManager;
 
+    /**
+     * CronManager - 定时任务管理器
+     * 由 GatewayServer 在启动时设置
+     */
+    private volatile ai.openclaw.cron.CronManager cronManager;
+
     // ─── 回调接口 ─────────────────────────────────────────────────
 
     /**
@@ -170,6 +176,15 @@ public class AgentManager {
     public void setSkillManager(SkillManager skillManager) {
         if (this.skillManager != null) this.skillManager.stop();
         this.skillManager = skillManager;
+    }
+
+    /**
+     * 注入 CronManager。
+     *
+     * @param cronManager 定时任务管理器
+     */
+    public void setCronManager(ai.openclaw.cron.CronManager cronManager) {
+        this.cronManager = cronManager;
     }
 
     /**
@@ -624,6 +639,22 @@ public class AgentManager {
      * @return 技能管理器实例，如果未配置则返回null
      */
     public SkillManager getSkillManager() { return skillManager; }
+
+    /**
+     * 获取定时任务管理器。
+     *
+     * @return 定时任务管理器实例，如果未配置则返回null
+     */
+    public ai.openclaw.cron.CronManager getCronManager() { return cronManager; }
+
+    /**
+     * 获取正在运行的定时任务映射。
+     *
+     * @return 正在运行的定时任务映射
+     */
+    public Map<String, ai.openclaw.cron.CronManager.CronRun> getRunningJobs() {
+        return cronManager != null ? cronManager.getAllRunningJobs() : new java.util.HashMap<>();
+    }
 
     /**
      * 列出所有可用的模型。

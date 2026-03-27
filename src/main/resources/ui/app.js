@@ -606,7 +606,42 @@ const App = (() => {
 
   function setSendBtn(enabled) {
     const btn = document.getElementById('chat-send-btn');
-    if (btn) btn.disabled = !enabled;
+    if (!btn) return;
+    if (enabled) {
+      // 发送状态
+      btn.disabled = false;
+      btn.innerHTML = '➤';
+      btn.className = 'chat-send-btn';
+      btn.onclick = sendMessage;
+    } else {
+      // 停止状态（正在生成）
+      btn.disabled = false;
+      btn.innerHTML = '■';
+      btn.className = 'chat-stop-btn';
+      btn.onclick = abortGeneration;
+    }
+  }
+
+  async function abortGeneration() {
+    if (!isGenerating) return;
+    try {
+      await rpc('chat.abort', { sessionKey: currentSession });
+      showToast('已停止生成', 'info');
+    } catch (e) {
+      console.warn('abort error:', e);
+    }
+    // 清理状态
+    isGenerating = false;
+    removeAllTyping();
+    if (currentAssistantMsgEl && currentAssistantContent) {
+      // 保留已生成的内容
+      finalizeStreamingBubble(currentAssistantMsgEl, currentAssistantContent, null);
+    } else if (!currentAssistantContent) {
+      appendMessage('system', '⏹ 生成已停止');
+    }
+    currentAssistantMsgEl = null;
+    currentAssistantContent = '';
+    setSendBtn(true);
   }
 
   // ─── Markdown renderer (lightweight) ──────────────────────────────────────
@@ -677,6 +712,7 @@ const App = (() => {
       const channelDefs = {
         webchat:  { icon: '🌐', desc: 'Built-in web chat interface' },
         telegram: { icon: '✈️', desc: 'Telegram Bot API' },
+        feishu:   { icon: '🟢', desc: '飞书 / Lark 机器人' },
         discord:  { icon: '💜', desc: 'Discord Bot' },
         slack:    { icon: '🟩', desc: 'Slack App' },
         signal:   { icon: '🔒', desc: 'Signal Messenger' },
@@ -685,6 +721,8 @@ const App = (() => {
 
       grid.innerHTML = channels.map(ch => {
         const def = channelDefs[ch.id] || { icon: '📡', desc: '' };
+        // 飞书渠道显示配置按钮
+        const showConfigBtn = ch.id === 'feishu';
         return `
           <div class="channel-card">
             <div class="channel-card-header">
@@ -699,9 +737,11 @@ const App = (() => {
             </div>
             <p style="font-size:12px;color:var(--text3)">${def.desc}</p>
             <div class="channel-actions">
-              ${ch.status === 'online'
-                ? `<button class="btn btn-sm btn-danger" onclick="App.channelAction('${ch.id}','logout')">Logout</button>`
-                : `<button class="btn btn-sm btn-ghost" onclick="App.channelAction('${ch.id}','info')">Configure</button>`
+              ${showConfigBtn
+                ? `<button class="btn btn-sm btn-primary" onclick="App.showFeishuModal()">配置</button>`
+                : (ch.status === 'online'
+                  ? `<button class="btn btn-sm btn-danger" onclick="App.channelAction('${ch.id}','logout')">Logout</button>`
+                  : `<button class="btn btn-sm btn-ghost" onclick="App.channelAction('${ch.id}','info')">Configure</button>`)
               }
             </div>
           </div>
@@ -720,6 +760,69 @@ const App = (() => {
         .catch(e => showToast(e.message, 'error'));
     } else {
       showToast(`Configure ${channelId} in the Config editor`, 'info');
+    }
+  }
+
+  // ─── 飞书配置 ──────────────────────────────────────────────────────────────
+  let cachedConfig = null;
+
+  async function showFeishuModal() {
+    try {
+      cachedConfig = await rpc('config.get');
+      const feishu = cachedConfig?.channels?.feishu || {};
+      document.getElementById('feishu-enabled').value = feishu.enabled ? 'true' : 'false';
+      document.getElementById('feishu-appId').value = feishu.appId || '';
+      document.getElementById('feishu-appSecret').value = feishu.appSecret || '';
+      document.getElementById('feishu-encryptKey').value = feishu.encryptKey || '';
+      document.getElementById('feishu-verificationToken').value = feishu.verificationToken || '';
+      document.getElementById('feishu-domain').value = feishu.domain || 'feishu';
+      document.getElementById('feishu-connectionMode').value = feishu.connectionMode || 'websocket';
+      document.getElementById('feishu-dmPolicy').value = feishu.dmPolicy || 'pairing';
+      document.getElementById('feishu-groupPolicy').value = feishu.groupPolicy || 'allowlist';
+      document.getElementById('feishu-modal').classList.remove('hidden');
+    } catch (e) {
+      showToast('加载配置失败: ' + e.message, 'error');
+    }
+  }
+
+  function closeFeishuModal() {
+    document.getElementById('feishu-modal').classList.add('hidden');
+  }
+
+  async function saveFeishuConfig() {
+    const appId = document.getElementById('feishu-appId').value.trim();
+    const appSecret = document.getElementById('feishu-appSecret').value.trim();
+
+    if (document.getElementById('feishu-enabled').value === 'true') {
+      if (!appId || !appSecret) {
+        showToast('启用飞书需要填写 App ID 和 App Secret', 'error');
+        return;
+      }
+    }
+
+    const config = {
+      channels: {
+        feishu: {
+          enabled: document.getElementById('feishu-enabled').value === 'true',
+          appId: appId || null,
+          appSecret: appSecret || null,
+          encryptKey: document.getElementById('feishu-encryptKey').value.trim() || null,
+          verificationToken: document.getElementById('feishu-verificationToken').value.trim() || null,
+          domain: document.getElementById('feishu-domain').value,
+          connectionMode: document.getElementById('feishu-connectionMode').value,
+          dmPolicy: document.getElementById('feishu-dmPolicy').value,
+          groupPolicy: document.getElementById('feishu-groupPolicy').value
+        }
+      }
+    };
+    try {
+      await rpc('config.patch', config);
+      cachedConfig = null;
+      showToast('飞书配置已保存并热重载', 'success');
+      closeFeishuModal();
+      loadChannels();
+    } catch (e) {
+      showToast('保存失败: ' + e.message, 'error');
     }
   }
 
@@ -799,23 +902,35 @@ const App = (() => {
         return;
       }
 
-      list.innerHTML = jobs.map(job => `
-        <div class="cron-item">
-          <div style="font-size:24px">${job.enabled ? '✅' : '⏸️'}</div>
+      list.innerHTML = jobs.map(job => {
+        const isRunning = job.running === true;
+        const statusClass = isRunning ? 'running' : (job.enabled ? 'idle' : 'disabled');
+        const statusText = isRunning ? '运行中' : (job.enabled ? '待执行' : '已禁用');
+        const statusIcon = isRunning ? '🔄' : (job.enabled ? '⏰' : '⏸️');
+        const elapsed = isRunning && job.startedAt ? Math.round((Date.now() - job.startedAt) / 1000) : 0;
+
+        return `
+        <div class="cron-item ${isRunning ? 'running' : ''}">
+          <div style="font-size:24px">${statusIcon}</div>
           <div class="cron-item-info">
-            <div class="cron-item-name">${esc(job.name || job.id)}</div>
+            <div class="cron-item-name">${esc(job.name || job.id)} ${isRunning ? '<span class="cron-status-badge running">运行中</span>' : ''}</div>
             <div class="cron-item-meta">
               <span class="cron-schedule">${esc(job.schedule)}</span>
               &nbsp;·&nbsp; Agent: ${esc(job.agentId || 'default')}
               &nbsp;·&nbsp; ${esc(job.prompt?.slice(0, 60) || '')}${job.prompt?.length > 60 ? '...' : ''}
+              ${isRunning ? `&nbsp;·&nbsp; <span style="color:var(--accent)">已运行 ${elapsed}s</span>` : ''}
             </div>
           </div>
           <div class="cron-item-actions">
-            <button class="btn btn-sm btn-ghost" onclick="App.runCronNow('${esc(job.id)}')">▶ Run Now</button>
+            ${isRunning
+              ? `<button class="btn btn-sm btn-danger" onclick="App.stopCronJob('${esc(job.id)}')">⏹ 停止</button>`
+              : `<button class="btn btn-sm btn-ghost" onclick="App.runCronNow('${esc(job.id)}')">▶ Run Now</button>`
+            }
             <button class="btn btn-sm btn-danger" onclick="App.removeCronJob('${esc(job.id)}')">🗑</button>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     } catch (e) {
       console.warn('loadCron error:', e);
     }
@@ -867,18 +982,36 @@ const App = (() => {
     } catch (e) { showToast(e.message, 'error'); }
   }
 
+  async function stopCronJob(id) {
+    if (!confirm('确定要停止正在运行的任务吗？')) return;
+    try {
+      await rpc('cron.stop', { id });
+      showToast('任务已停止', 'info');
+      loadCron(); // 刷新列表
+    } catch (e) { showToast(e.message, 'error'); }
+  }
+
   function onCronEvent(payload) {
     if (!payload) return;
-    const status = payload.status === 'completed' ? '✅' : '❌';
-    showToast(`${status} Cron [${payload.jobName || payload.jobId}]: ${payload.status}`, payload.status === 'completed' ? 'success' : 'error');
+    const status = payload.status === 'completed' ? '✅' : (payload.status === 'stopped' ? '⏹' : '❌');
+    const statusMsg = payload.status === 'completed' ? '完成' : (payload.status === 'stopped' ? '已停止' : '失败');
+    showToast(`${status} Cron [${payload.jobName || payload.jobId}]: ${statusMsg}`, payload.status === 'completed' ? 'success' : 'info');
 
-    // 将定时任务结果添加到聊天界面
-    if (payload.status === 'completed' && payload.output) {
-      const jobName = payload.jobName || payload.jobId;
-      appendMessage('assistant', `⏰ **定时任务: ${jobName}**\n\n${payload.output}`);
-    } else if (payload.status === 'failed' && payload.error) {
-      const jobName = payload.jobName || payload.jobId;
-      appendMessage('system', `❌ 定时任务 "${jobName}" 执行失败: ${payload.error}`);
+    // 刷新 cron 列表以更新状态
+    if (payload.status === 'completed' || payload.status === 'failed' || payload.status === 'stopped') {
+      loadCron();
+    }
+
+    // 只在当前 session 是对应的 cron session 时才添加消息到聊天界面
+    const cronSessionKey = payload.sessionKey || `cron:${payload.jobId}`;
+    if (currentSession === cronSessionKey) {
+      if (payload.status === 'completed' && payload.result) {
+        const jobName = payload.jobName || payload.jobId;
+        appendMessage('assistant', `⏰ **定时任务: ${jobName}**\n\n${payload.result}`);
+      } else if (payload.status === 'failed' && payload.error) {
+        const jobName = payload.jobName || payload.jobId;
+        appendMessage('system', `❌ 定时任务 "${jobName}" 执行失败: ${payload.error}`);
+      }
     }
   }
 
@@ -1255,6 +1388,9 @@ const App = (() => {
       });
     }
 
+    // 初始化发送按钮
+    setSendBtn(true);
+
     connect();
   });
 
@@ -1263,6 +1399,7 @@ const App = (() => {
     doAuth: (silent) => doAuth(silent),
     switchView,
     sendMessage,
+    abortGeneration,
     selectSession,
     newChatSession,
     resetCurrentSession,
@@ -1270,6 +1407,9 @@ const App = (() => {
     refreshOverview,
     loadChannels,
     channelAction,
+    showFeishuModal,
+    closeFeishuModal,
+    saveFeishuConfig,
     loadSessions,
     openSessionChat,
     doResetSession,
@@ -1279,6 +1419,7 @@ const App = (() => {
     addCronJob,
     removeCronJob,
     runCronNow,
+    stopCronJob,
     saveConfig,
     loadConfig,
     refreshLogs,
